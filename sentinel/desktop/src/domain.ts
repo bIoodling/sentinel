@@ -35,6 +35,8 @@ export const recommendedKeywords=Object.values(keywordsByCategory).flat();
 export function upgrade(s:State):State {
  const next=structuredClone(s);
  next.settings.fontSize=Math.max(14,next.settings.fontSize);
+ if(next.settings.profit==='#8cbfa1')next.settings.profit='#72ba99';
+ if(next.settings.loss==='#ce9090')next.settings.loss='#d58e82';
  if(next.settings.keywords.length===4&&['Solana','Memecoin','Liquidity','Token launch'].every(k=>next.settings.keywords.includes(k)))next.settings.keywords=[...recommendedKeywords];
  return next;
 }
@@ -46,10 +48,12 @@ export const signed=(n:number)=>`${n>=0?'+':''}${n.toFixed(2)}%`;
 export const price=(n:number)=>n.toFixed(n<.001?7:5);
 export function candles(token:Token,step=0,interval=60){
  let last=token.price*.92;const start=1761955200;
- return Array.from({length:100},(_,i)=>{
+ const data=Array.from({length:100},(_,i)=>{
   const open=last,delta=Math.sin((i+tokens.indexOf(token)*5)*1.19)*.0025+Math.cos(i*.42)*.002+.0008;
   const close=open*(1+delta),wick=open*.0012;
   last=close;
-  return {time:start+i*interval,open,high:Math.max(open,close)+wick,low:Math.min(open,close)-wick,close:close*(i===99?1+Math.sin(step*.4)*.001:1),volume:(25+(i*31)%80)*1000};
- }).map(c=>({...c,high:Math.max(c.high,c.close),low:Math.min(c.low,c.close)}));
+  return {time:start+i*interval,open,high:Math.max(open,close)+wick,low:Math.min(open,close)-wick,close,volume:(25+(i*31)%80)*1000};
+ });
+ const normalise=token.price/data.at(-1)!.close;
+ return data.map((c,i)=>{const close=i===99?quote(token,step):c.close*normalise;return {...c,open:c.open*normalise,close,high:Math.max(c.high*normalise,close),low:Math.min(c.low*normalise,close)};});
 }

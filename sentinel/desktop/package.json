@@ -9,7 +9,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "tauri": "tauri",
-    "test": "node --test ../tests/model.test.mjs",
+    "test": "node --test ../tests/model.test.mjs tests/domain.test.mjs",
     "test:ui": "playwright test"
   },
   "dependencies": {
