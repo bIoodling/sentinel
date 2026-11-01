@@ -1,0 +1,82 @@
+name: SENTINEL Windows build and interface checks
+on:
+  push:
+    branches: [sentinel/native-redesign]
+    paths: [sentinel/desktop/**, sentinel/src/**, sentinel/tests/**, .github/workflows/desktop.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: sentinel-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  interface:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sentinel/desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: sentinel/desktop/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm test
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:ui
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: interface-review
+          path: |
+            sentinel/desktop/screenshots
+            sentinel/desktop/playwright-report
+            sentinel/desktop/dist
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: sentinel/desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: sentinel/desktop/pnpm-lock.yaml
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: sentinel/desktop/src-tauri -> target
+      - run: pnpm install --frozen-lockfile
+      - run: node scripts/icon.mjs
+      - run: pnpm tauri build --bundles nsis
+      - run: cargo test --manifest-path src-tauri/Cargo.toml
+      - name: Windows process launch smoke check
+        shell: pwsh
+        run: |
+          $sentinelProcess = Start-Process -FilePath (Resolve-Path src-tauri/target/release/sentinel.exe) -PassThru -WindowStyle Hidden
+          Start-Sleep -Seconds 4
+          $sentinelProcess.Refresh()
+          if ($sentinelProcess.HasExited) { throw "SENTINEL exited during startup with code $($sentinelProcess.ExitCode)" }
+          Stop-Process -Id $sentinelProcess.Id
+      - name: Package portable executable
+        shell: pwsh
+        run: Copy-Item src-tauri/target/release/sentinel.exe src-tauri/target/release/SENTINEL-portable.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SENTINEL-Windows-x64
+          path: |
+            sentinel/desktop/src-tauri/target/release/SENTINEL-portable.exe
+            sentinel/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe
+            sentinel/desktop/THIRD_PARTY.md
+            sentinel/desktop/licenses
