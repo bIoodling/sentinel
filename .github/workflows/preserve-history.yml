@@ -1,0 +1,27 @@
+name: Preserve original prototype history
+on:
+  push:
+    branches: [sentinel/native-redesign]
+    paths: [sentinel/history/prototype.bundle, .github/workflows/preserve-history.yml]
+permissions:
+  contents: write
+jobs:
+  import-history:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Preserve original commits without changing the working tree
+        shell: bash
+        run: |
+          git bundle verify sentinel/history/prototype.bundle
+          git fetch sentinel/history/prototype.bundle refs/heads/sentinel/ui-prototype:refs/remotes/prototype/archive
+          if ! git merge-base --is-ancestor refs/remotes/prototype/archive HEAD; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git merge --allow-unrelated-histories --strategy=ours --no-ff refs/remotes/prototype/archive -m "chore: preserve original SENTINEL prototype commit history"
+            git push origin HEAD:refs/heads/sentinel/native-redesign
+          fi
+      - name: Verify original calculations
+        run: node --test sentinel/tests/model.test.mjs
