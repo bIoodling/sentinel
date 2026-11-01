@@ -1,31 +1,332 @@
-import {useEffect,useRef,useState} from 'react';
-import Markdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import rehypeHighlight from 'rehype-highlight';
-import {useSession} from '../context';
-import {demoReply,type Message} from '../domain';
-import {Badge,PageHeading} from '../components/UI';
-import {Icon} from '../components/Icon';
-export default function Assistant({prompt='',onPromptUsed}:{prompt?:string;onPromptUsed:()=>void}){
- const {state,setState,notify}=useSession(),[search,setSearch]=useState(''),[input,setInput]=useState(''),[stream,setStream]=useState(''),[busy,setBusy]=useState(false);
- const abort=useRef(false),scroll=useRef<HTMLDivElement>(null);
- const chat=state.chats.find(c=>c.id===state.activeChat)??state.chats[0];
- useEffect(()=>{abort.current=false;return()=>{abort.current=true;};},[]);
- useEffect(()=>{scroll.current?.scrollTo({top:scroll.current.scrollHeight});},[stream,chat.messages.length]);
- useEffect(()=>{if(prompt){onPromptUsed();void send(prompt);}},[prompt]);
- async function send(text:string,regenerate=false){
-  if(busy||!text.trim())return;
-  if(chat.messages.length>=198){notify('Conversation limit reached. Start a new conversation.');return;}
-  const chatId=chat.id;
-  const base:Message[]=regenerate?chat.messages.slice(0,-1):[...chat.messages,{role:'user',text:text.trim()}];
-  setState(s=>({...s,chats:s.chats.map(c=>c.id===chatId?{...c,title:c.messages.length?c.title:text.slice(0,32),messages:base}:c)}));
-  setInput('');setBusy(true);setStream('');
-  const answer=`### Research interpretation\n\n${demoReply(text,state)}\n\n**Evidence status:** invented fixture data only. No model or external source was queried.\n\n\`\`\`json\n{"environment":"simulation","verified_market_data":false}\n\`\`\``;
-  const words=answer.split(' ');let result='';
-  for(let i=0;i<words.length;i+=5){if(abort.current)return;result=words.slice(0,i+5).join(' ');setStream(result);await new Promise(r=>setTimeout(r,state.settings.reduceMotion?0:22));}
-  if(abort.current)return;
-  setState(s=>({...s,chats:s.chats.map(c=>c.id===chatId?{...c,messages:[...base,{role:'assistant',text:answer}]}:c)}));setStream('');setBusy(false);
- }
- function newChat(){if(busy)return;if(state.chats.length>=50){notify('50 conversation limit reached. Export a backup before resetting.');return;}const c={id:crypto.randomUUID(),title:'New analysis',messages:[]};setState(s=>({...s,chats:[c,...s.chats],activeChat:c.id}));}
- return <><PageHeading title="A sharper second opinion." description="Research conversations, with the evidence kept in view." actions={<Badge tone="blue">SCRIPTED DEMO · DISCONNECTED</Badge>}/><section className="assistant-layout flex-fill"><aside className="conversation-sidebar"><button className="primary" onClick={newChat} disabled={busy}><Icon name="plus"/>New conversation</button><label className="search-field"><Icon name="search"/><input aria-label="Search conversations" placeholder="Search history" value={search} onChange={e=>setSearch(e.target.value)}/></label><div className="conversation-list internal-scroll">{state.chats.filter(c=>`${c.title} ${c.messages.map(m=>m.text).join(' ')}`.toLowerCase().includes(search.toLowerCase())).map(c=><button key={c.id} aria-current={c.id===chat.id?'true':undefined} disabled={busy} onClick={()=>setState(s=>({...s,activeChat:c.id}))}><Icon name="assistant"/><span>{c.title}<small>{c.messages.length} messages · local</small></span></button>)}</div><div className="conversation-privacy"><Icon name="shield"/>Conversations remain on this device.</div></aside><div className="chat-surface"><header className="chat-toolbar"><span><i className="status-dot"/>No model connected</span><select aria-label="AI provider preference" value={state.settings.aiProvider} onChange={e=>setState(s=>({...s,settings:{...s.settings,aiProvider:e.target.value}}))}>{['Scripted demo','Ollama (not connected)','OpenAI (not connected)'].map(p=><option key={p}>{p}</option>)}</select></header><div className="message-scroll internal-scroll" ref={scroll}>{!chat.messages.length?<div className="assistant-welcome"><span className="assistant-mark"><Icon name="assistant"/></span><small>SENTINEL RESEARCH ASSISTANT</small><h2>What would you like to analyse?</h2><p>Question the movement. Understand the risk.<br/>Explore a clearly labelled simulated conversation.</p><div className="suggested-prompts">{[['discovery','Analyse a token','Why is ORBIT trending?'],['up','Explain a market movement','Explain the recent ORBIT price movement.'],['portfolio','Review my practice portfolio','How did my simulated portfolio perform?'],['social','Check social sentiment','Check the social sentiment around ORBIT.'],['clock','Summarise overnight activity','What happened while I was offline?']].map(([icon,label,q])=><button key={label} onClick={()=>void send(q)}><Icon name={icon}/><span>{label}</span><Icon name="arrow"/></button>)}</div></div>:chat.messages.map((m,i)=><article className={`message ${m.role}`} key={i}><div className="message-avatar"><Icon name={m.role==='assistant'?'assistant':'portfolio'}/></div><div className="message-content"><header><strong>{m.role==='assistant'?'Sentinel':'You'}</strong>{m.role==='assistant'&&<Badge>DEMO</Badge>}<button className="icon-button push-right" aria-label={`Copy message ${i+1}`} onClick={()=>navigator.clipboard.writeText(m.text).then(()=>notify('Message copied.')).catch(()=>notify('Clipboard access unavailable. Select text to copy.'))}><Icon name="copy"/></button></header><Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>{m.text}</Markdown>{m.role==='assistant'&&i===chat.messages.length-1&&<button className="text-button" disabled={busy} onClick={()=>{const previous=chat.messages[i-1];if(previous?.role==='user')void send(previous.text,true);}}><Icon name="refresh"/>Regenerate demo response</button>}</div></article>)}{busy&&<article className="message assistant"><div className="message-avatar"><Icon name="assistant"/></div><div className="message-content"><header><strong>Sentinel</strong><Badge>WRITING DEMO</Badge></header><Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>{stream||'Preparing a scripted interpretation…'}</Markdown><span className="stream-caret"/></div></article>}</div><form className="chat-composer" onSubmit={e=>{e.preventDefault();void send(input);}}><textarea aria-label="Assistant message" placeholder="Ask about a token, signal or practice position…" value={input} onChange={e=>setInput(e.target.value)} maxLength={2000} disabled={busy} onKeyDown={e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();void send(input);}}}/><button className="primary" aria-label="Send message" disabled={busy||!input.trim()}><Icon name="arrow"/></button><small>Scripted responses · no AI or live research connected · Ctrl+Enter to send</small></form></div></section></>;
+import { useEffect, useRef, useState } from "react";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import rehypeHighlight from "rehype-highlight";
+import { useSession } from "../context";
+import { demoReply, type Message } from "../domain";
+import { Badge, PageHeading } from "../components/UI";
+import { Icon } from "../components/Icon";
+export default function Assistant({
+  prompt = "",
+  onPromptUsed,
+}: {
+  prompt?: string;
+  onPromptUsed: () => void;
+}) {
+  const { state, setState, notify } = useSession(),
+    [search, setSearch] = useState(""),
+    [input, setInput] = useState(""),
+    [stream, setStream] = useState(""),
+    [busy, setBusy] = useState(false);
+  const abort = useRef(false),
+    scroll = useRef<HTMLDivElement>(null);
+  const chat =
+    state.chats.find((c) => c.id === state.activeChat) ?? state.chats[0];
+  useEffect(() => {
+    abort.current = false;
+    return () => {
+      abort.current = true;
+    };
+  }, []);
+  useEffect(() => {
+    scroll.current?.scrollTo({ top: scroll.current.scrollHeight });
+  }, [stream, chat.messages.length]);
+  useEffect(() => {
+    if (prompt) {
+      onPromptUsed();
+      void send(prompt);
+    }
+  }, [prompt]);
+  async function send(text: string, regenerate = false) {
+    if (busy || !text.trim()) return;
+    if (chat.messages.length >= 198) {
+      notify("Conversation limit reached. Start a new conversation.");
+      return;
+    }
+    const chatId = chat.id;
+    const base: Message[] = regenerate
+      ? chat.messages.slice(0, -1)
+      : [...chat.messages, { role: "user", text: text.trim() }];
+    setState((s) => ({
+      ...s,
+      chats: s.chats.map((c) =>
+        c.id === chatId
+          ? {
+              ...c,
+              title: c.messages.length ? c.title : text.slice(0, 32),
+              messages: base,
+            }
+          : c,
+      ),
+    }));
+    setInput("");
+    setBusy(true);
+    setStream("");
+    const answer = `### Research interpretation\n\n${demoReply(text, state)}\n\n**Evidence status:** invented fixture data only. No model or external source was queried.\n\n\`\`\`json\n{"environment":"simulation","verified_market_data":false}\n\`\`\``;
+    const words = answer.split(" ");
+    let result = "";
+    for (let i = 0; i < words.length; i += 5) {
+      if (abort.current) return;
+      result = words.slice(0, i + 5).join(" ");
+      setStream(result);
+      await new Promise((r) =>
+        setTimeout(r, state.settings.reduceMotion ? 0 : 22),
+      );
+    }
+    if (abort.current) return;
+    setState((s) => ({
+      ...s,
+      chats: s.chats.map((c) =>
+        c.id === chatId
+          ? { ...c, messages: [...base, { role: "assistant", text: answer }] }
+          : c,
+      ),
+    }));
+    setStream("");
+    setBusy(false);
+  }
+  function newChat() {
+    if (busy) return;
+    if (state.chats.length >= 50) {
+      notify(
+        "50 conversation limit reached. Export a backup before resetting.",
+      );
+      return;
+    }
+    const c = { id: crypto.randomUUID(), title: "New analysis", messages: [] };
+    setState((s) => ({ ...s, chats: [c, ...s.chats], activeChat: c.id }));
+  }
+  return (
+    <>
+      <PageHeading
+        title="A sharper second opinion."
+        description="Research conversations, with the evidence kept in view."
+        actions={<Badge tone="blue">SCRIPTED DEMO · DISCONNECTED</Badge>}
+      />
+      <section className="assistant-layout flex-fill">
+        <aside className="conversation-sidebar">
+          <button className="primary" onClick={newChat} disabled={busy}>
+            <Icon name="plus" />
+            New conversation
+          </button>
+          <label className="search-field">
+            <Icon name="search" />
+            <input
+              aria-label="Search conversations"
+              placeholder="Search history"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </label>
+          <div className="conversation-list internal-scroll">
+            {state.chats
+              .filter((c) =>
+                `${c.title} ${c.messages.map((m) => m.text).join(" ")}`
+                  .toLowerCase()
+                  .includes(search.toLowerCase()),
+              )
+              .map((c) => (
+                <button
+                  key={c.id}
+                  aria-current={c.id === chat.id ? "true" : undefined}
+                  disabled={busy}
+                  onClick={() => setState((s) => ({ ...s, activeChat: c.id }))}
+                >
+                  <Icon name="assistant" />
+                  <span>
+                    {c.title}
+                    <small>{c.messages.length} messages · local</small>
+                  </span>
+                </button>
+              ))}
+          </div>
+          <div className="conversation-privacy">
+            <Icon name="shield" />
+            Conversations remain on this device.
+          </div>
+        </aside>
+        <div className="chat-surface">
+          <header className="chat-toolbar">
+            <span>
+              <i className="status-dot" />
+              No model connected
+            </span>
+            <select
+              aria-label="AI provider preference"
+              value={state.settings.aiProvider}
+              onChange={(e) =>
+                setState((s) => ({
+                  ...s,
+                  settings: { ...s.settings, aiProvider: e.target.value },
+                }))
+              }
+            >
+              {[
+                "Scripted demo",
+                "Ollama (not connected)",
+                "OpenAI (not connected)",
+              ].map((p) => (
+                <option key={p}>{p}</option>
+              ))}
+            </select>
+          </header>
+          <div className="message-scroll internal-scroll" ref={scroll}>
+            {!chat.messages.length ? (
+              <div className="assistant-welcome">
+                <span className="assistant-mark">
+                  <Icon name="assistant" />
+                </span>
+                <small>SENTINEL RESEARCH ASSISTANT</small>
+                <h2>What would you like to analyse?</h2>
+                <p>
+                  Question the movement. Understand the risk.
+                  <br />
+                  Explore a clearly labelled simulated conversation.
+                </p>
+                <div className="suggested-prompts">
+                  {[
+                    ["discovery", "Analyse a token", "Why is ORBIT trending?"],
+                    [
+                      "up",
+                      "Explain a market movement",
+                      "Explain the recent ORBIT price movement.",
+                    ],
+                    [
+                      "portfolio",
+                      "Review my practice portfolio",
+                      "How did my simulated portfolio perform?",
+                    ],
+                    [
+                      "social",
+                      "Check social sentiment",
+                      "Check the social sentiment around ORBIT.",
+                    ],
+                    [
+                      "clock",
+                      "Summarise overnight activity",
+                      "What happened while I was offline?",
+                    ],
+                  ].map(([icon, label, q]) => (
+                    <button key={label} onClick={() => void send(q)}>
+                      <Icon name={icon} />
+                      <span>{label}</span>
+                      <Icon name="arrow" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              chat.messages.map((m, i) => (
+                <article className={`message ${m.role}`} key={i}>
+                  <div className="message-avatar">
+                    <Icon
+                      name={m.role === "assistant" ? "assistant" : "portfolio"}
+                    />
+                  </div>
+                  <div className="message-content">
+                    <header>
+                      <strong>
+                        {m.role === "assistant" ? "Sentinel" : "You"}
+                      </strong>
+                      {m.role === "assistant" && <Badge>DEMO</Badge>}
+                      <button
+                        className="icon-button push-right"
+                        aria-label={`Copy message ${i + 1}`}
+                        onClick={() =>
+                          navigator.clipboard
+                            .writeText(m.text)
+                            .then(() => notify("Message copied."))
+                            .catch(() =>
+                              notify(
+                                "Clipboard access unavailable. Select text to copy.",
+                              ),
+                            )
+                        }
+                      >
+                        <Icon name="copy" />
+                      </button>
+                    </header>
+                    <Markdown
+                      remarkPlugins={[remarkGfm]}
+                      rehypePlugins={[rehypeHighlight]}
+                    >
+                      {m.text}
+                    </Markdown>
+                    {m.role === "assistant" &&
+                      i === chat.messages.length - 1 && (
+                        <button
+                          className="text-button"
+                          disabled={busy}
+                          onClick={() => {
+                            const previous = chat.messages[i - 1];
+                            if (previous?.role === "user")
+                              void send(previous.text, true);
+                          }}
+                        >
+                          <Icon name="refresh" />
+                          Regenerate demo response
+                        </button>
+                      )}
+                  </div>
+                </article>
+              ))
+            )}
+            {busy && (
+              <article className="message assistant">
+                <div className="message-avatar">
+                  <Icon name="assistant" />
+                </div>
+                <div className="message-content">
+                  <header>
+                    <strong>Sentinel</strong>
+                    <Badge>WRITING DEMO</Badge>
+                  </header>
+                  <Markdown
+                    remarkPlugins={[remarkGfm]}
+                    rehypePlugins={[rehypeHighlight]}
+                  >
+                    {stream || "Preparing a scripted interpretation…"}
+                  </Markdown>
+                  <span className="stream-caret" />
+                </div>
+              </article>
+            )}
+          </div>
+          <form
+            className="chat-composer"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void send(input);
+            }}
+          >
+            <textarea
+              aria-label="Assistant message"
+              placeholder="Ask about a token, signal or practice position…"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              maxLength={2000}
+              disabled={busy}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                  e.preventDefault();
+                  void send(input);
+                }
+              }}
+            />
+            <button
+              className="primary"
+              aria-label="Send message"
+              disabled={busy || !input.trim()}
+            >
+              <Icon name="arrow" />
+            </button>
+            <small>
+              Scripted responses · no AI or live research connected · Ctrl+Enter
+              to send
+            </small>
+          </form>
+        </div>
+      </section>
+    </>
+  );
 }

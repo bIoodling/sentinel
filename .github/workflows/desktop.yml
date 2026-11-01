@@ -27,6 +27,7 @@ jobs:
           cache-dependency-path: sentinel/desktop/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+      - run: node scripts/preview.mjs
       - run: pnpm test
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:ui
@@ -38,6 +39,7 @@ jobs:
             sentinel/desktop/screenshots
             sentinel/desktop/playwright-report
             sentinel/desktop/dist
+            sentinel/desktop/dist-preview
   windows:
     if: ${{ !contains(github.event.head_commit.message, '[ui-only]') }}
     runs-on: windows-latest
@@ -81,3 +83,4 @@ jobs:
             sentinel/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe
             sentinel/desktop/THIRD_PARTY.md
             sentinel/desktop/licenses
+            sentinel/desktop/src-tauri/Cargo.lock
