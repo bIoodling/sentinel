@@ -1,0 +1,11 @@
+{
+  "date": "2026-11-01T21:36:20.066Z",
+  "runtime": "v24.22.1",
+  "platform": "win32",
+  "iterations": 1000,
+  "bundleBytes": 90608,
+  "externalRuntimeRequests": 0,
+  "syntheticCandleBatchTotalMs": 9.122,
+  "practiceBuyTotalMs": 28.116,
+  "limits": "Pure-function microbenchmarks only. Not FPS, UI responsiveness, startup, memory, network latency or AI latency. Desktop/browser were not launched."
+}

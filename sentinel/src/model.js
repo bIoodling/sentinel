@@ -49,6 +49,7 @@ export function statistics(state,since=0){
  return {count:outcomes.length,winRate:outcomes.length?gains.length/outcomes.length*100:null,averageGain:gains.length?gains.reduce((a,b)=>a+b,0)/gains.length:0,averageLoss:losses.length?losses.reduce((a,b)=>a+b,0)/losses.length:0,largestGain:Math.max(0,...gains),largestLoss:Math.min(0,...losses),totalLoss:losses.reduce((a,b)=>a+b,0),realised:outcomes.reduce((a,b)=>a+b,0)};
 }
 export function trade(state,{token,side,amount}) {
+ if(state.trades.length>=10000)throw Error('Practice ledger limit reached. Export a backup before resetting.');
  const t=tokens.find(t=>t.id===token),s=state.settings;
  if(!t||!['buy','sell'].includes(side)||!Number.isFinite(amount)||amount<=0) throw Error('Enter a positive amount.');
  const held=holdings(state)[token]??{quantity:0,cost:0};
